@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>three-portal-test</title>
+	<style type="text/css">
+		body, html{
+			margin: 0px;
+		}
+	</style>
+</head>
+<body>
+	<script async src="https://ga.jspm.io/npm:es-module-shims@1.4.3/dist/es-module-shims.js" crossorigin="anonymous"></script>
+
+	<script type='importmap'>
+	  {
+	    "imports": {
+	      "three": "https://unpkg.com/three@0.139.0/build/three.module.js",
+	      "three/": "https://unpkg.com/three@0.139.0/",
+	      "modeler": "https://cdn.jsdelivr.net/gh/ycw/three-csg-modeller@0.1.10/dist/lib.esm.js"
+	    }
+	  }
+	</script>
+	<script defer type='module'>
+
+		import * as THREE from 'three'
+		import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls.js';
+		import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
+		import { CSGModeller } from 'modeler';
+
+		const VOL = new THREE.Vector3(4, 2, 3);
+		const AREA = new THREE.Vector2(VOL.x - 2 * (0.1), VOL.y - 2 * (0.1));
+		const THICKNESS = .25;
+
+		const LY_REGULAR = 0;
+		const LY_SCOPED = 2;
+		const LY_VIEWPLANE = 3;
+
+		const renderer = new THREE.WebGLRenderer({antialias:true});
+		renderer.setSize(innerWidth, innerHeight);
+
+		const scene = new THREE.Scene();
+		const camera = new THREE.PerspectiveCamera(75, 2, .1, 100);
+		const controls = new OrbitControls(camera, renderer.domElement);
+
+		scene.background = new THREE.Color('lightgray');
+		camera.position.set(3, 0, 2);
+
+		controls.enableDamping = true;
+		renderer.shadowMap.enabled = true;
+
+		const light = new THREE.DirectionalLight();
+		light.position.set(0, .5, 1);
+		light.castShadow = true;
+		scene.add(light);
+		light.layers.enable(LY_SCOPED);
+
+		const light2 = new THREE.AmbientLight('white', .5);
+		scene.add(light2);
+		light2.layers.enable(LY_REGULAR);
+
+	  	const obj = new THREE.Group();
+	  	const clock = new THREE.Clock();
+
+	  	let geom0 = new THREE.IcosahedronGeometry();
+		let mat0 = new THREE.MeshLambertMaterial({});
+		let meshIco, mixer;
+	  	/*let meshIco = new THREE.Mesh(geom0, mat0);
+	  	meshIco.castShadow = true;
+	  	obj.add(meshIco);*/
+
+	  	const loader = new GLTFLoader();
+
+	  	const [mt0, mt1] = (() => {
+		  const shdr0 = THREE.ShaderLib.basic;
+		  const mat0 = new THREE.ShaderMaterial({
+		    side: THREE.BackSide,
+		    uniforms: THREE.UniformsUtils.merge([shdr0.uniforms, {
+		      diffuse: { value: new THREE.Color('black') }
+		    }]),
+		    vertexShader: shdr0.vertexShader.replace('#include <begin_vertex>', `
+		    vec3 transformed = vec3( position ) + normal * 0.02;
+		    `),
+		    fragmentShader: shdr0.fragmentShader
+		  });
+
+		  const shdr1 = THREE.ShaderLib.toon;
+		  const mat1 = new THREE.ShaderMaterial({
+		    lights: true,
+		    uniforms: THREE.UniformsUtils.clone(shdr1.uniforms),
+		    vertexShader: shdr1.vertexShader,
+		    fragmentShader: shdr1.fragmentShader.replace('#include <output_fragment>', `
+		    #include <output_fragment>
+		    float angA = (45.0) / 180.0 * PI;
+		    float cosB = dot(normalize(vNormal), normalize(vViewPosition)); // vViewPosition already negated
+		    float angB = acos(cosB);
+		    float j = 0.0;
+		    if (angB > angA) {
+		      j = min(1.0, (angB - angA) / (1.72 - angA));
+		      j = step(0.0, sin(j * 6.28));
+		    } else {
+		      j = 1.0;
+		    }
+		    float l = dot(vec3(0.3, 0.5, 0.2), gl_FragColor.rgb);
+		    if (l > 0.5) {
+		      gl_FragColor.rgb *= vec3(j);
+		    } else {
+		      gl_FragColor.rgb += 1.0 - vec3(j);
+		    }
+		  `)
+		  });
+		  return [mat0, mat1];
+		})();
+
+	  	loader.load('./shark.glb', (gltf) => {
+	  		meshIco = gltf.scene;
+	  		const animations = gltf.animations;
+	  		mixer = new THREE.AnimationMixer( meshIco );
+			var action = mixer.clipAction( animations[ 0 ] );
+			action.play();
+
+	  		meshIco.castShadow = true;
+	  		//meshIco.scale.set(.5, .5, .5)
+	  		meshIco.translateZ(.9);
+	  		meshIco.translateY(-1.)
+	  		obj.add(meshIco);
+	  		meshIco.layers.set(LY_SCOPED);
+	  		meshIco.traverse((child) => {
+	  			if(child.isSkinnedMesh){
+	  				child.geometry.clearGroups();
+					child.geometry.addGroup(0, Infinity, 0);
+					child.geometry.addGroup(0, Infinity, 1);
+	  				child.material = [mt0, mt1];
+
+	  				const $color = new THREE.Color().setHSL(0.48, 0.65, 0.1 + .8 * 0 / Math.max(1, 1-1));
+	  				child.material[1].uniforms.diffuse.value = $color;
+	  			}
+	  			child.layers.set(LY_SCOPED);
+
+	  			
+	  		})
+	  	})
+
+	  	let geom1 = new THREE.BoxGeometry(VOL.x, VOL.y, VOL.z);
+	  	let mat1 = new THREE.MeshLambertMaterial({ side: THREE.BackSide, color: 'wheat' });
+	  	let mesh1 = new THREE.Mesh(geom1, mat1);
+	  	mesh1.receiveShadow = true;
+	  	obj.add(mesh1);
+
+	  	obj.translateZ(-.5 * (VOL.z));
+
+	  	
+	  	mesh1.layers.set(LY_SCOPED);
+
+		scene.add(obj);
+
+		geom0 = new THREE.BoxGeometry(VOL.x, VOL.y, THICKNESS);
+		mat0 = new THREE.MeshLambertMaterial();
+		let mesh0 = new THREE.Mesh(geom0, mat0);
+
+		geom1 = new THREE.BoxGeometry(AREA.x, AREA.y, THICKNESS);
+		mat1 = new THREE.MeshLambertMaterial();
+		mesh1 = new THREE.Mesh(geom1, mat1);
+		mesh1.translateZ(.5 * THICKNESS);
+
+		const M = new CSGModeller(THREE);
+		const mesh = M.model(mesh0).subtract(M.model(mesh1)).build();
+		mesh.layers.set(LY_REGULAR);
+	
+		scene.add(mesh);
+
+		const geom = new THREE.PlaneGeometry(AREA.x, AREA.y);
+		const mat = new THREE.MeshLambertMaterial();
+		const vplane = new THREE.Mesh(geom, mat);
+		vplane.layers.set(LY_VIEWPLANE);
+		vplane.translateZ(0.001);
+
+		scene.add(vplane);
+
+		const gl = renderer.getContext();
+
+		renderer.autoClear = false;
+		renderer.autoClearColor = false;
+
+		const update = () => {
+			requestAnimationFrame(update);
+			const delta = clock.getDelta();
+
+			if(mixer){
+				mixer.update(delta)
+			}
+			renderer.clear(true, true, true);
+			//meshIco.rotateY(.01);
+			//meshIco.rotateX(.01);
+			// ---- pic frame
+			camera.layers.set(LY_REGULAR);
+			renderer.render(scene, camera);
+
+			// ----
+			gl.enable(gl.STENCIL_TEST);
+
+			// ---- viewplane
+			gl.stencilFunc(gl.ALWAYS, 0, 0xFF);
+			gl.stencilOp(gl.KEEP, gl.KEEP, gl.INCR);
+			gl.stencilMask(0xFF);
+			gl.depthMask(false);
+			gl.colorMask(false, false, false, false);
+
+			camera.layers.set(LY_VIEWPLANE);
+			renderer.render(scene, camera);
+
+			// ---- scoped objs
+			gl.stencilFunc(gl.NOTEQUAL, 0, 0xFF);
+			gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+			gl.stencilMask(0x00);
+			gl.depthMask(true);
+			gl.colorMask(true, true, true, true);
+
+			camera.layers.set(LY_SCOPED);
+			renderer.render(scene, camera);
+
+			// ---- 
+			gl.disable(gl.STENCIL_TEST);
+
+			controls.update();
+
+		}
+
+		const resize = () => {
+		  	renderer.setPixelRatio(window.devicePixelRatio);
+		  	renderer.setSize(window.innerWidth, window.innerHeight, false);
+		  	camera.aspect = window.innerWidth / window.innerHeight;
+		  	camera.updateProjectionMatrix();
+		}
+
+		addEventListener('resize', resize);
+			
+		document.body.append(renderer.domElement);
+
+		update()
+
+	</script>
+</body>
+</html>
