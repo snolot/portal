@@ -10,4 +10,4 @@ This project show how to setup a basic portal effect using [three.js](https://th
 
 ## Youtube video
 
-Check the [video](https://youtu.be/MhnCVZc5f-8) on youtube.
+Check the [video](https://youtu.be/EzubLAReBOI) on youtube.
