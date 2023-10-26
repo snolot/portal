@@ -1,10 +1,10 @@
-# Twister
+# Portal
 
-Three.js experiment using particles to create twister like effect.
+Three.js experiment to create portal effect.
 
 ## Description
 
-This project show how to setup a particle system to simulate twister using [three.js](https://threejs.org/).
+This project show how to setup a basic portal effect using [three.js](https://threejs.org/).
 
 ![preview](./images/preview.jpg)
 
